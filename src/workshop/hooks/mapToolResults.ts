@@ -1,6 +1,7 @@
 // STAGE 3: deterministic mappers from tool output to graph entities. No LLM involved.
 // `mapToolResult` is pure (easy to test); `applyDelta` writes the result to Neo4j.
 import { run } from "../graph/driver.js";
+import { embedEmails } from "../retrieval/emails.js";
 import { invalidateGraphSchema } from "../graph/schema.js";
 
 export type Label = "Email" | "Event" | "Issue" | "Person" | "Customer" | "Project";
@@ -48,7 +49,7 @@ export function mapToolResult(tool: string, output: any, people: People = {}, wo
       label: "Email", key: e.id,
       props: {
         id: e.id, sender: e.sender, subject: e.subject,
-        ...(e.snippet ? { snippet: e.snippet } : {}), ...(e.date ? { date: e.date } : {}),
+        ...(e.snippet ? { snippet: e.snippet } : {}), ...(e.body ? { body: e.body } : {}), ...(e.date ? { date: e.date } : {}),
         ...(e.from ? { from: e.from } : {}), ...(e.to ? { to: e.to } : {}), ...(e.cc ? { cc: e.cc } : {}),
         ...(e.thread_id ? { thread_id: e.thread_id } : {}), ...(e.message_id ? { message_id: e.message_id } : {}),
       },
@@ -140,5 +141,6 @@ export async function applyDelta(d: GraphDelta): Promise<void> {
   }
   const contacts = [...new Set(d.rels.filter((r) => r.type === "WORKS_FOR" && r.from.label === "Person").map((r) => r.from.key))];
   if (contacts.length) await run("UNWIND $names AS k MATCH (p:Person {name: k}) SET p:Contact", { names: contacts }); // works at a customer
+  await embedEmails(d.nodes.filter((n) => n.label === "Email").map((n) => n.props as unknown as Parameters<typeof embedEmails>[0][number])); // only a full read carries a body
   invalidateGraphSchema();
 }

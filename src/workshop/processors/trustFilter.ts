@@ -1,5 +1,5 @@
 // STAGE 6: withhold facts from untrusted sources when the question is sensitive (payments, accounts).
-// Pure functions so the gate can be unit-tested; query_memory and graphContext both call filterFacts().
+// Pure functions so the gate can be unit-tested; query_memory calls filterFacts(), and search_emails applies the same test to its results.
 import { config } from "../../../workshop.config.js";
 
 const SENSITIVE = /\b(pay|paid|payment|payments|account|accounts|bank|iban|sort\s*code|remit|remittance|wire|transfer|invoice|invoices)\b/i;

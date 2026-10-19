@@ -1,5 +1,5 @@
 // Keyword lookup over graph entities, used by the query_memory tool.
-// (Graph *traversal* retrieval for stage 4 lives in processors/graphContext.ts.)
+// (Graph *traversal* retrieval for stage 4 lives in graph/explore.ts.)
 import { run } from "./driver.js";
 
 const STOP = new Set("a an and are as at be but by do does for from how i in is it me my of on or our the their there this to was we what when where which who whom why will with you your should need prep prepare before about".split(" "));

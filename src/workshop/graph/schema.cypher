@@ -17,3 +17,4 @@ CREATE CONSTRAINT user_id IF NOT EXISTS FOR (n:User) REQUIRE n.id IS UNIQUE;
 CREATE CONSTRAINT location_name IF NOT EXISTS FOR (n:Location) REQUIRE n.name IS UNIQUE;
 CREATE CONSTRAINT organization_name IF NOT EXISTS FOR (n:Organization) REQUIRE n.name IS UNIQUE;
 CREATE CONSTRAINT object_name IF NOT EXISTS FOR (n:Object) REQUIRE n.name IS UNIQUE;
+CREATE VECTOR INDEX email_embedding IF NOT EXISTS FOR (e:Email) ON e.embedding OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};

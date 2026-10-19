@@ -2,7 +2,7 @@
 //   ContextRecorder (input processor) sees exactly what is about to be sent to the model at every step and writes it as a graph:
 //       (:Message)-[:NEXT]->(:Message)                          conversation order
 //       (:Message)-[:MADE_CALL]->(:ToolCall {args, arg_<name>, result, outcome})-[:OF_TOOL]->(:Tool)   one per tool call in an assistant message
-//       (:SystemMessage)  one per injected system block (instructions, pinned rules, semantic recall, graph context)
+//       (:SystemMessage)  one per injected system block (instructions, pinned rules, what is known about the user)
 //           -[:PINS]->(:Rule)  -[:RETRIEVED {score}]->(:Email|:Event|:Issue|:Person)  -[:ADDED_FOR]->(:Message)
 //   recordStep      (onStepFinish)    writes the Step node (one per model step) with (Step)-[:HAD_IN_CONTEXT]->(Message|SystemMessage),
 //                                     (Step)-[:REQUESTED]->(ToolCall), (Step)-[:NEXT]->(Step) and (ToolCall)-[:NEXT]->(ToolCall)
@@ -46,11 +46,11 @@ function toolCallsOf(m: any): ToolCallRow[] {
   return rows;
 }
 
-const KIND_BY_TAG: Record<string, string> = { "pinned-rules": "pinned_rules", "semantic-context": "semantic_recall", "graph-context": "graph_context", "about-user": "about_user" };
+const KIND_BY_TAG: Record<string, string> = { "pinned-rules": "pinned_rules", "about-user": "about_user" };
 
 function systemRows(messageList: ProcessInputStepArgs["messageList"]): SystemMessageRow[] {
   const rows: SystemMessageRow[] = [];
-  const add = (kind: string, text: string, meta: { rules?: string[]; retrieved?: SystemMessageRow["retrieved"] } = {}) => {
+  const add = (kind: string, text: string, meta: { rules?: string[] } = {}) => {
     if (!text.trim()) return;
     rows.push({ id: createHash("sha1").update(`${kind}\n${text}`).digest("hex").slice(0, 12), kind, text, ...meta });
   };

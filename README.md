@@ -24,7 +24,7 @@ Stack: TypeScript, Node 22+, [Mastra](https://mastra.ai) (`@mastra/core`, `@mast
 - Node 22.13+ and npm
 - Docker (for Neo4j), or a free [Aura](https://neo4j.com/cloud/aura/) instance
 - An OpenAI API key (`OPENAI_API_KEY`). Any model in Mastra's `provider/model` format works via `MODEL`.
-- No other key is needed: the semantic-recall baseline embeds locally with `@mastra/fastembed` (a ~30 MB model is downloaded on first use).
+- No other key is needed: email search embeds locally with `@mastra/fastembed` (a ~30 MB model is downloaded on first use).
 
 Prefer a container? Open the repo in VS Code and choose **Reopen in Container**. `.devcontainer/` starts the workspace plus Neo4j and forwards ports 7474 (Neo4j Browser), 7687 (Bolt) and 4111 (Mastra Studio).
 
@@ -248,24 +248,25 @@ If the agent deleted anyway, check the `Rule` exists (query above). If extractio
 
 ---
 
-## Stage 4: similarity, exact queries and graph walks
+## Stage 4: retrieval tools: search, graph walks and exact queries
 
 ### Goal
-Choose the retrieval that fits the question. The workspace has an answer for each kind:
+Choose the retrieval tool that fits the question. The agent decides: each tool is a tool call, and its result is a tool result in the trace, not text added to the system prompt. The workspace has an answer for each kind:
 
 | Question | Fits | Why |
 |---|---|---|
-| *"Are any customers behind on paying us?"* | Similarity | The overdue emails (e-038 to e-040) say "past due", "overdue" and "transfer delayed", never "behind on paying" |
-| *"Which open tickets haven't come up in any meeting?"* | Exact query | An absence has no text to match |
-| *"What is blocking the issue Dana escalated?"* | Similarity, then a walk | Similarity finds the meeting and Dana's emails, relationships lead to ENG-142, ENG-139 and Sam |
+| *"Are any customers behind on paying us?"* | `search_emails` | The overdue emails (e-038 to e-040) say "past due", "overdue" and "transfer delayed", never "behind on paying" |
+| *"Who should I chase before Tuesday's billing review?"* | `explore_graph` | The question names the meeting, so it is found by title, and relationships lead to ENG-142, ENG-139 and Sam. No similarity is involved |
+| *"Are any customers behind on paying us, and is anything on our side holding it up?"* | `search_emails`, then `explore_graph` | The payment emails (e-038 to e-040) are found by meaning, and the walk from them reaches the tickets and Sam |
+| *"Which open tickets haven't come up in any meeting?"* | `query_graph` | An absence has no text to match |
 
 ### Flags
 `retrieval: "none" | "semantic" | "graph" | "both"` (`npm run step -- 4` sets `"both"`).
-- `semantic`: a vector index (local `fastembed`, cosine, top 4, Mastra's default `topK`) over the same emails, events and tickets.
-- `graph`: link nodes the question names (an Event title or day, an Issue id, a Customer or Project name), then walk `Email -[MENTIONS]-> Customer <-[FOR]- Project <-[PART_OF]- Issue -[BLOCKED_BY]-> Issue -[OWNED_BY]-> Person` and `Event -[ABOUT]-> Issue`. A question that names nothing links to nothing.
-- `both`: the items similarity found become starting nodes as well, so a vague question gets a start.
+- `semantic`: the agent gets `search_emails`. Each `Email` node carries an `embedding` (local `fastembed`, `bge-small-en-v1.5`, 384 dimensions) and the `email_embedding` vector index finds the closest four by cosine similarity.
+- `graph`: the agent gets `explore_graph` and `query_graph`. `explore_graph` takes ids, titles or names (an email id, an Issue id, an Event title or day, a Customer or Project name), links them to nodes, then walks `Email -[MENTIONS]-> Customer <-[FOR]- Project <-[PART_OF]- Issue -[BLOCKED_BY]-> Issue -[OWNED_BY]-> Person` and `Event -[ABOUT]-> Issue`, and returns the result as JSON.
+- `both`: all three tools. The agent searches for a starting email, then explores from its id.
 
-Stage 4 also gives the agent `query_graph`, a text-to-Cypher tool: a model writes one read-only query over the data graph (emails, events, tickets, people, customers, projects), the harness checks it, runs it in a read transaction and returns the rows. Facts, rules and the trace are not in its schema and it cannot name them. It is a convenience, not a security boundary.
+The tool set is read when the agent starts, so change `retrieval` and restart. `query_graph` is a text-to-Cypher tool: a model writes one read-only query over the data graph (emails, events, tickets, people, customers, projects), the harness checks it, runs it in a read transaction and returns the rows. Facts, rules and the trace are not in its schema and it cannot name them. It is a convenience, not a security boundary.
 
 ### Run
 ```bash
@@ -276,10 +277,10 @@ npm run query -- unscheduledTickets
 npm run query -- overdueToWork
 npm run scenario -- 4          # needs a model key; add --record to refresh the recording
 ```
-`ingest` loads the seed with the same deterministic mappers as stage 3. The mapper matches the `customers` and `projects` in `seed.json` by name and email domain, with no model, to create `Customer` and `Project` nodes, `MENTIONS`, `FOR`, `PART_OF` and `WORKS_FOR`.
+`ingest` loads the seed with the same deterministic mappers as stage 3, and embeds each email body and stores the vector on its `Email` node. The mapper matches the `customers` and `projects` in `seed.json` by name and email domain, with no model, to create `Customer` and `Project` nodes, `MENTIONS`, `FOR`, `PART_OF` and `WORKS_FOR`.
 
 ### What to look for
-Similarity returns the three payment emails for the first question, and the closest meetings for the second. Only the exact query lists ENG-139, ENG-150 and ENG-151. For "Are any customers behind on paying us, and is anything on our side holding it up?", `semantic` names the customers and no ticket, `graph` retrieves nothing, and `both` also retrieves Contoso's Atlas project, ENG-142, and ENG-139 owned by Sam (ETA Thursday).
+Run `npm run query -- toolCalls` after each question to see which tool the agent chose, and `npm run query -- toolResults` to see what `explore_graph` returned. The first question calls `search_emails`, which ranks e-038, e-040 and e-039 in its top four. The second calls `explore_graph` with the meeting's title and never searches. The third calls `search_emails` and then `explore_graph` on the emails it found, and reaches Contoso's Atlas project, ENG-142, and ENG-139 owned by Sam (ETA Thursday). Only the exact query lists ENG-139, ENG-150 and ENG-151 as the tickets with no meeting.
 
 ### Neo4j query
 ```cypher
@@ -341,7 +342,7 @@ Plant a false memory through an email, then trace it to its source and stop it r
 ### Flags
 `provenance: true`, `trustFilter: true` (`npm run step -- 6`)
 - `provenance`: every `remember_fact` is stamped by code with `source` and `trust`, resolved from the emails actually read this session (the model's own claim is ignored). External sender → `source: email:external, trust: low`, plus `(Fact)-[:FROM]->(Email)`.
-- `trustFilter`: low-trust facts (and raw external-email chunks from semantic recall) are withheld for payment and account questions.
+- `trustFilter`: low-trust facts (and external-sender emails returned by `search_emails`) are withheld for payment and account questions.
 
 ### Run
 ```bash
@@ -449,13 +450,12 @@ A dry-run call is in the audit log with outcome `dry-run` and the inbox is uncha
 (Step)-[:REQUESTED]->(ToolCall)                                   0..n calls per step
 (Step)-[:HAD_IN_CONTEXT]->(Message | SystemMessage)               exactly what the model saw at that step
 (SystemMessage {kind})-[:PINS]->(Rule)                            kind: pinned_rules
-(SystemMessage {kind})-[:RETRIEVED {score}]->(Email|Event|Issue|Person|Customer|Project)   kind: semantic_recall | graph_context
 (SystemMessage)-[:ADDED_FOR]->(Message)                           the user message the block was built for
 (Rule)-[:STATED_IN]->(Message)   (Fact)-[:FROM]->(Email)
-(Email)-[:SENT_BY|TO|CC]->(Person)   (Email)-[:REPLY_TO]->(Email)
+(Email {body, embedding})-[:SENT_BY|TO|CC]->(Person)   (Email)-[:REPLY_TO]->(Email)   index email_embedding on Email.embedding
 (Event)-[:ABOUT]->(Issue)-[:BLOCKED_BY]->(Issue)   (Issue)-[:OWNED_BY]->(Person)   (Event)-[:ATTENDED_BY]->(Person)
 ```
-Handy: `npm run query -- conversation`, `toolCalls`, `systemContext`, `stepContext`.
+Handy: `npm run query -- conversation`, `toolCalls`, `toolResults`, `systemContext`, `stepContext`.
 
 ## Repo map
 
@@ -465,7 +465,7 @@ src/agent.ts             the one agent file: a list of stages to comment/uncomme
 src/workshop/chat.ts               REPL
 src/workshop/tools/               mail, calendar, tickets, memory + MODE switch (index.ts) + guards
 src/workshop/nsuite/              fake apps: seed.json, state, audit, real stubs
-src/workshop/processors/          pinnedRules, graphContext, semanticContext, approvalGate, recipientAllowlist, trustFilter
+src/workshop/processors/          pinnedRules, approvalGate, recipientAllowlist, trustFilter
 src/workshop/hooks/               recordTrace, mapToolResults, extractUserStatements
 src/workshop/graph/               driver, schema.cypher, queries, store, provenance
 src/workshop/harness/             state, reset, presets, ingest   (not visible to the agent)

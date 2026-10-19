@@ -17,7 +17,7 @@ export function renderApocSchema(meta: Meta, denied: string[] = DENIED_LABELS): 
   if (!nodes.length) return "";
   const lines = ["Nodes"];
   for (const [label, n] of nodes) {
-    const props = Object.keys(n.properties ?? {}).join(", ");
+    const props = Object.keys(n.properties ?? {}).filter((k) => k !== "embedding").join(", "); // a 384-number vector is no use in a query's schema
     lines.push(`(:${label}${props ? ` {${props}}` : ""})`);
   }
   lines.push("Relationships");

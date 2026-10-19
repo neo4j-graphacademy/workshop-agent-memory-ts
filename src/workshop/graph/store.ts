@@ -128,7 +128,7 @@ export async function writeConversation(rows: { id: string; role: string; text: 
 
 export interface SystemMessageRow {
   id: string; kind: string; text: string;
-  rules?: string[]; retrieved?: { label: string; id: string; score?: number }[];
+  rules?: string[];
 }
 
 /** Everything injected as a system message becomes a node, linked to what it was built from. */
@@ -137,11 +137,6 @@ export async function writeSystemMessages(rows: SystemMessageRow[], userMessageI
   await run("UNWIND $rows AS r MERGE (s:SystemMessage {id:r.id}) SET s.kind=r.kind, s.text=r.text", { rows });
   const pins = rows.flatMap((r) => (r.rules ?? []).map((key) => ({ id: r.id, key })));
   if (pins.length) await run("UNWIND $pins AS p MATCH (s:SystemMessage {id:p.id}), (r:Rule {key:p.key}) MERGE (s)-[:PINS]->(r)", { pins });
-  for (const label of ["Email", "Event", "Issue", "Person", "Customer", "Project"]) {
-    const key = ["Person", "Customer", "Project"].includes(label) ? "name" : "id";
-    const rel = rows.flatMap((r) => (r.retrieved ?? []).filter((x) => x.label === label).map((x) => ({ id: r.id, key: x.id, score: x.score ?? null })));
-    if (rel.length) await run(`UNWIND $rel AS x MATCH (s:SystemMessage {id:x.id}), (n:${label} {${key}:x.key}) MERGE (s)-[r:RETRIEVED]->(n) SET r.score = x.score`, { rel });
-  }
   if (userMessageId) {
     await run(
       "UNWIND $ids AS id MATCH (s:SystemMessage {id:id}), (m:Message {id:$mid}) WHERE s.kind <> 'instructions' MERGE (s)-[:ADDED_FOR]->(m)",

@@ -1,6 +1,8 @@
-// STAGE 4+: query_graph, a text-to-Cypher tool. Similarity cannot answer questions about absence, counts or exact
-// values, and the stage 4 processors only link and walk. This is the exact-query route: a model writes one read-only
-// Cypher query against the graph the agent has built up, the harness checks it, and the rows come back.
+// STAGE 4+: explore_graph (walk from named nodes) and query_graph (a text-to-Cypher tool).
+//
+// explore_graph links the nodes a question names and walks the relationships around them. It cannot count or find
+// absences, which is what query_graph is for: a model writes one read-only Cypher query against the graph the agent
+// has built up, the harness checks it, and the rows come back. Similarity cannot answer those questions either.
 //
 // This is a convenience for the data graph, not a security boundary. Facts and rules are not in its schema and its
 // queries cannot name them, but standing rules and trust are enforced elsewhere (query_memory, the guards).
@@ -8,6 +10,7 @@ import { Agent } from "@mastra/core/agent";
 import { z } from "zod";
 import { EXTRACTION_MODEL, modelConfig } from "../env.js";
 import { runRead } from "../graph/driver.js";
+import { exploreGraph } from "../graph/explore.js";
 import { DENIED_LABELS, getGraphSchema } from "../graph/schema.js";
 import { spec } from "./spec.js";
 
@@ -60,4 +63,14 @@ export const query_graph = spec({
       return { cypher, error: err instanceof Error ? err.message : String(err) };
     }
   },
+});
+
+export const explore_graph = spec({
+  id: "explore_graph",
+  description:
+    "Walk the saved graph outward from nodes you name and return what is connected to them, as JSON. Give the starts as strings: an email id ('e-040'), a ticket id ('ENG-142'), a meeting title or day ('Billing review'), or a customer or project name. You get back the emails, meetings, tickets, owners, blockers, customers and projects around them, including who owns what blocks a ticket and when it is due. Use it after search_emails to follow an email to the work behind it, or on its own when the question already names the meeting, ticket, customer or project.",
+  schema: z.object({ starts: z.array(z.string()).min(1).describe("Ids, titles or names to start the walk from") }),
+  write: false,
+  mock: async ({ starts }) =>
+    (await exploreGraph(starts)) ?? { notice: `Nothing in the graph matches ${starts.map((s) => `"${s}"`).join(", ")}. The graph only holds what has been read or ingested, so try an id or a name exactly as it appears.` },
 });

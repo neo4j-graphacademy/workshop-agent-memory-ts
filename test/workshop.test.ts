@@ -12,7 +12,8 @@ import { checkRecipient } from "../src/workshop/processors/recipientAllowlist.js
 import { filterFacts, isSensitiveQuestion } from "../src/workshop/processors/trustFilter.js";
 import { resolveProvenance } from "../src/workshop/graph/provenance.js";
 import { renderRules } from "../src/workshop/processors/pinnedRules.js";
-import { renderGraphContext } from "../src/workshop/processors/graphContext.js";
+import { shapeGraph } from "../src/workshop/graph/explore.js";
+import { emailEmbeddingText } from "../src/workshop/retrieval/emails.js";
 import { checkCypher } from "../src/workshop/tools/graph.js";
 import { presets, rewriteConfigSource } from "../src/workshop/harness/presets.js";
 import { execute, specs } from "../src/workshop/tools/index.js";
@@ -136,20 +137,44 @@ test("mapper: Dana works for Contoso by email domain, and tickets join their pro
   assert.ok(issue.includes("ENG-142 PART_OF Atlas") && issue.includes("Atlas FOR Contoso"));
 });
 
-test("graph context renders customers, projects and the meeting a ticket came up in", () => {
-  const text = renderGraphContext(
-    [{
-      issue: { id: "ENG-142", title: "Billing export fails", status: "in_progress" }, issueOwner: "Priya", project: "Atlas", customer: "Contoso",
+test("explore_graph returns customers, projects and the meeting a ticket came up in as data", () => {
+  const view = shapeGraph({
+    events: [],
+    issues: [{
+      issue: { id: "ENG-142", title: "Billing export fails", status: "in_progress" }, owner: "Priya", project: "Atlas", customer: "Contoso",
       meetings: [{ title: "Billing review", day: "Tuesday", time: "14:00", attendees: ["Priya", "Dana"] }],
       blocker: { id: "ENG-139", title: "Migrate invoices table", eta: "2025-06-12" }, blockerOwner: "Sam",
     }],
-    { customers: [{ customer: "Contoso", contacts: ["Dana"], projects: ["Atlas"] }], emails: [{ id: "e-038", subject: "Invoice INV-2041 is 38 days past due", mentions: ["Contoso", "Atlas"] }] },
-  );
-  assert.match(text, /Email e-038.*mentions Contoso, Atlas/);
-  assert.match(text, /Customer Contoso: contacts Dana; projects Atlas/);
-  assert.match(text, /ENG-142.*project Atlas \(Contoso\).*Discussed in: Billing review \(Tuesday 14:00\)/);
-  assert.match(text, /BLOCKED BY ENG-139.*owner Sam.*ETA Thursday 2025-06-12/s, "a bare ISO date gets its weekday from code");
-  assert.equal(renderGraphContext([]), "", "nothing linked means no context message");
+    customers: [{ customer: "Contoso", contacts: ["Dana"], projects: ["Atlas"] }],
+    emails: [{ id: "e-038", subject: "Invoice INV-2041 is 38 days past due", mentions: ["Contoso", "Atlas"] }],
+  });
+  assert.deepEqual(view.emails[0].mentions, ["Contoso", "Atlas"]);
+  assert.deepEqual(view.customers[0], { customer: "Contoso", contacts: ["Dana"], projects: ["Atlas"] });
+  const [issue] = view.issues as any[];
+  assert.equal(issue.project, "Atlas");
+  assert.equal(issue.customer, "Contoso");
+  assert.equal(issue.discussedIn[0].title, "Billing review");
+  assert.deepEqual(issue.blockedBy, [{ id: "ENG-139", title: "Migrate invoices table", eta: "Thursday 2025-06-12", owner: "Sam" }], "a bare ISO date gets its weekday from code");
+  assert.doesNotThrow(() => JSON.stringify(view), "the result is plain JSON");
+});
+
+test("explore_graph merges the rows of a ticket with two blockers and leaves out empty fields", () => {
+  const view = shapeGraph({
+    events: [], customers: [], emails: [],
+    issues: [
+      { issue: { id: "ENG-1", title: "A" }, blocker: { id: "ENG-2" }, blockerOwner: "Sam" },
+      { issue: { id: "ENG-1", title: "A" }, blocker: { id: "ENG-3" }, blockerOwner: null },
+    ],
+  });
+  const [issue] = view.issues as any[];
+  assert.equal(view.issues.length, 1);
+  assert.deepEqual(issue.blockedBy.map((b: any) => b.id), ["ENG-2", "ENG-3"]);
+  assert.ok(!("owner" in issue) && !("project" in issue), "unknown values are not sent to the model");
+});
+
+test("an email is embedded with its headers and its whole body", () => {
+  const text = emailEmbeddingText({ id: "e-040", from: "Tailspin Toys Accounts Payable <payables@tailspin-customer.example>", to: ["adam@northwind.test"], cc: [], subject: "Re: Beacon invoice, transfer delayed", body: "quarter-end approvals" });
+  assert.match(text, /^Email from Tailspin Toys Accounts Payable.*to adam@northwind.test: Re: Beacon invoice, transfer delayed\nquarter-end approvals$/s);
 });
 
 test("query_graph: only one read-only query over the data graph gets through", () => {
@@ -222,14 +247,8 @@ test("provenance is resolved by code from emails actually read", () => {
 });
 
 // ── rendering and presets ───────────────────────────────────────────────────
-test("pinned rules text and graph context rendering", () => {
+test("pinned rules text", () => {
   assert.match(renderRules([{ key: "k", tool: "delete_email", mode: "require_approval", source: "user", turn: 1, text: "never delete" }]), /delete_email.*approval/s);
-  const text = renderGraphContext([{
-    event: { title: "Billing review", day: "Tuesday", date: "2025-06-10", time: "14:00", attendees: ["Priya", "Dana"], tickets: ["ENG-142"] },
-    issue: { id: "ENG-142", title: "Billing export fails", status: "in_progress" }, issueOwner: "Priya",
-    blocker: { id: "ENG-139", title: "Migrate invoices table", eta: "Thursday 2025-06-12" }, blockerOwner: "Sam",
-  }]);
-  assert.match(text, /BLOCKED BY ENG-139.*owner Sam.*Thursday/s);
 });
 
 test("presets: stage 0 is fully off and each stage only adds", () => {

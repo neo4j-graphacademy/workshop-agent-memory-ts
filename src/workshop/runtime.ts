@@ -2,7 +2,6 @@
 // Tools and processors do not otherwise know which thread/turn/step they are in.
 export interface SystemMeta {
   rules?: string[]; // Rule keys the block pins
-  retrieved?: { label: "Email" | "Event" | "Issue" | "Person" | "Customer" | "Project"; id: string; score?: number }[];
 }
 
 export interface RuntimeState {

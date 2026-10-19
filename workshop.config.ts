@@ -37,26 +37,26 @@ export const config: WorkshopConfig = {
   maxSteps: 8,
 
   // STAGE 1: short-term memory. true = Mastra message history is attached to the agent.
-  history: true,
+  history: false,
 
   // STAGE 1: how many stored messages are sent back to the model (Mastra `lastMessages`).
   // Tool calls count as messages. Small on purpose so a rule falls out of the window.
   historyWindow: 6,
 
   // STAGE 2: context traces. true = onStepFinish writes Step nodes and HAD_IN_CONTEXT edges to Neo4j.
-  traces: true,
+  traces: false,
 
   // STAGE 3: persist user-stated facts and rules (one structured LLM call per user turn).
-  extractUserStatements: true,
+  extractUserStatements: false,
 
   // STAGE 3: map tool results (emails, events, issues) into graph entities, deterministically.
-  mapToolResults: true,
+  mapToolResults: false,
 
   // STAGE 3: inject every Rule node from the graph into the context at every step.
-  pinnedRules: true,
+  pinnedRules: false,
 
   // STAGE 3: onboarding. The agent asks who you are (name, where you live, preferred language, a fun fact) and pins what it knows about you.
-  onboarding: true,
+  onboarding: false,
 
   // STAGE 4: retrieval before each answer. "none" | "semantic" | "graph" | "both"
   retrieval: "none",

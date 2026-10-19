@@ -122,12 +122,19 @@ export const queries = {
     defaults: { sessionId: null },
   },
   systemContext: {
-    description: "What each injected system message (pinned rules, semantic recall, graph context) was built from",
+    description: "What each injected system message (instructions, pinned rules, what is known about the user) was built from",
     cypher: `MATCH (s:SystemMessage) WHERE s.kind <> 'instructions'
-             OPTIONAL MATCH (s)-[r:PINS|RETRIEVED]->(n)
-             RETURN s.kind AS kind, type(r) AS rel, labels(n)[0] AS label, coalesce(n.id, n.name, n.key) AS node, r.score AS score
-             ORDER BY kind, score DESC`,
+             OPTIONAL MATCH (s)-[:PINS]->(r:Rule)
+             RETURN s.kind AS kind, collect(r.key) AS pinnedRules, left(s.text, 80) AS text
+             ORDER BY kind`,
     defaults: {},
+  },
+  toolResults: {
+    description: "What a tool returned (explore_graph unless tool=<name> is given), with the arguments it was called with. Results are clipped to 1000 characters",
+    cypher: `MATCH (tc:ToolCall {tool: $tool}) WHERE tc.sessionId = coalesce($sessionId, tc.sessionId)
+             RETURN tc.sessionId AS sessionId, tc.args AS args, tc.result AS result
+             ORDER BY tc.sessionId, tc.id`,
+    defaults: { tool: "explore_graph", sessionId: null },
   },
   stepContext: {
     description: "For each step: the tools it requested, how many messages and which system messages were in context",

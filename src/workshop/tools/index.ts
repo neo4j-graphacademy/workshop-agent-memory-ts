@@ -6,7 +6,8 @@ import { delete_email, list_emails, read_email, send_message } from "./mail.js";
 import { get_events, update_event } from "./calendar.js";
 import { get_issue, list_issues, update_issue } from "./tickets.js";
 import { query_memory, remember_fact, show_extraction_prompt } from "./memory.js";
-import { query_graph } from "./graph.js";
+import { explore_graph, query_graph } from "./graph.js";
+import { search_emails } from "./search.js";
 import { runGuards } from "./guards.js";
 import type { ToolSpec } from "./spec.js";
 
@@ -50,7 +51,7 @@ export function toMastraTool(s: ToolSpec<any>) {
   });
 }
 
-export const specs = { list_emails, read_email, delete_email, send_message, get_events, update_event, list_issues, get_issue, update_issue, remember_fact, query_memory, show_extraction_prompt, query_graph };
+export const specs = { list_emails, read_email, delete_email, send_message, get_events, update_event, list_issues, get_issue, update_issue, remember_fact, query_memory, show_extraction_prompt, query_graph, explore_graph, search_emails };
 
 /** Everyday tools (mail, calendar, tickets). */
 export const baseTools = Object.fromEntries(
@@ -58,5 +59,9 @@ export const baseTools = Object.fromEntries(
 );
 /** Long-term memory tools (STAGE 3). */
 export const memoryTools = { remember_fact: toMastraTool(remember_fact), query_memory: toMastraTool(query_memory), show_extraction_prompt: toMastraTool(show_extraction_prompt) };
-/** Exact-query tool (STAGE 4): a model writes read-only Cypher over the data graph. */
-export const graphTools = { query_graph: toMastraTool(query_graph) };
+/** Retrieval tools (STAGE 4). The `retrieval` setting in workshop.config.ts decides which of them the agent gets. */
+export const retrievalTools = {
+  search_emails: toMastraTool(search_emails),
+  explore_graph: toMastraTool(explore_graph),
+  query_graph: toMastraTool(query_graph),
+};
