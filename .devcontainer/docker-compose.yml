@@ -2,7 +2,7 @@
 # localhost:7687 / localhost:7474 inside the workspace and the editor can forward those ports (locally and in Codespaces).
 services:
   workspace:
-    image: mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm
+    image: mcr.microsoft.com/devcontainers/typescript-node:5-22-trixie
     volumes:
       - ..:/workspaces/agent-memory-workshop:cached
     command: sleep infinity
